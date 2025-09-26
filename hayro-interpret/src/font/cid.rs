@@ -289,11 +289,15 @@ fn read_encoding(
                 // Try to resolve using the cmap_resolver
                 if let Ok(name_str) = std::str::from_utf8(name) {
                     if let Some(data) = cmap_resolver(name_str) {
+                        // First try to parse as text CMAP
+                        if let Some(cmap) = parse_cmap(data) {
+                            return Some(cmap);
+                        }
+                        // If text parsing failed, try binary CMAP
                         if let Some(cmap) = crate::font::cmap::parse_binary_cmap(data.to_vec()) {
                             return Some(cmap);
-                        } else {
-                            warn!("failed to parse binary cmap: {name_str:?}");
                         }
+                        warn!("failed to parse cmap as either text or binary: {name_str:?}");
                     }
                 }
                 warn!("built-in encodings are not supported yet: {name:?}");
@@ -307,7 +311,7 @@ fn read_encoding(
             }
 
             let decoded = s.decoded().ok()?;
-            parse_cmap(std::str::from_utf8(&decoded).ok()?)
+            parse_cmap(&decoded)
         }
         _ => None,
     }
