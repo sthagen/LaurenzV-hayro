@@ -28,8 +28,8 @@ pub(crate) struct Type0Font {
 }
 
 impl Type0Font {
-    pub(crate) fn new(dict: &Dict) -> Option<Self> {
-        let cmap = read_encoding(&dict.get::<Object>(ENCODING)?)?;
+    pub(crate) fn new(dict: &Dict, settings: &crate::InterpreterSettings) -> Option<Self> {
+        let cmap = read_encoding(&dict.get::<Object>(ENCODING)?, &settings.cmap_resolver)?;
 
         let horizontal = !cmap.is_vertical();
 
@@ -277,14 +277,26 @@ fn read_widths2(arr: &Array) -> Option<HashMap<u32, [f32; 3]>> {
     Some(map)
 }
 
-fn read_encoding(object: &Object) -> Option<CMap> {
+fn read_encoding(
+    object: &Object,
+    cmap_resolver: &crate::interpret::CMapResolverFn,
+) -> Option<CMap> {
     match object {
         Object::Name(n) => match n.deref() {
             IDENTITY_H => Some(CMap::identity_h()),
             IDENTITY_V => Some(CMap::identity_v()),
-            _ => {
-                warn!("built-in encodings are not supported yet: {n:?}");
-
+            name => {
+                // Try to resolve using the cmap_resolver
+                if let Ok(name_str) = std::str::from_utf8(name) {
+                    if let Some(data) = cmap_resolver(name_str) {
+                        if let Some(cmap) = crate::font::cmap::parse_binary_cmap(data.to_vec()) {
+                            return Some(cmap);
+                        } else {
+                            warn!("failed to parse binary cmap: {name_str:?}");
+                        }
+                    }
+                }
+                warn!("built-in encodings are not supported yet: {name:?}");
                 None
             }
         },

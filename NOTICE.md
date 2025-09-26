@@ -12,6 +12,7 @@ under the Apache 2.0 license:
 - The flate decoder.
 - The CMAP parser.
 - The implementation of AES, MD5, SHA and RC4.
+- The implementation of parsing binary CMAP files.
 
 The following parts of code have been adapted from [pdf-rs](https://github.com/pdf-rs/pdf), available under the
 Apache 2.0 license:

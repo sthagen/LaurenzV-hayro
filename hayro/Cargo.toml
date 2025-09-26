@@ -16,7 +16,8 @@ bytemuck = { workspace = true, features = ["bytemuck_derive"] }
 log = { workspace = true }
 
 [features]
-default = ["embed-fonts"]
+default = ["embed-fonts", "cmaps"]
 jpeg2000 = ["hayro-interpret/jpeg2000"]
 embed-fonts = ["hayro-interpret/embed-fonts"]
+cmaps = ["hayro-interpret/cmaps"]
 

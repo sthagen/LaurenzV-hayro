@@ -31,6 +31,10 @@ pub(crate) mod text;
 /// The first argument is the raw data, the second argument is the index in case the font
 /// is a TTC, otherwise it should be 0.
 pub type FontResolverFn = Arc<dyn Fn(&FontQuery) -> Option<(FontData, u32)> + Send + Sync>;
+/// A callback function for resolving cmap queries.
+///
+/// Takes the name of the cmap and returns the binary data if available.
+pub type CMapResolverFn = Arc<dyn Fn(&str) -> Option<&[u8]> + Send + Sync>;
 /// A callback function for resolving warnings during interpretation.
 pub type WarningSinkFn = Arc<dyn Fn(InterpreterWarning) + Send + Sync>;
 
@@ -74,9 +78,258 @@ pub struct InterpreterSettings {
     /// and use the default implementation of the callback.
     pub font_resolver: FontResolverFn,
 
+    /// A callback function for resolving CMap (character mapping) files.
+    /// PDFs may reference external CMap files by name for character encoding.
+    /// When the `cmaps` feature is enabled, the default implementation will resolve
+    /// built-in binary CMap files. When disabled, it returns `None` by default.
+    pub cmap_resolver: CMapResolverFn,
+
     /// In certain cases, `hayro` will emit a warning in case an issue was encountered while interpreting
     /// the PDF file. Providing a callback allows you to catch those warnings and handle them, if desired.
     pub warning_sink: WarningSinkFn,
+}
+
+#[cfg(feature = "cmaps")]
+fn resolve_builtin_cmap(name: &str) -> Option<&[u8]> {
+    match name {
+        // Basic encodings
+        "78-EUC-H" => Some(include_bytes!("../../assets/bcmaps/78-EUC-H.bcmap")),
+        "78-EUC-V" => Some(include_bytes!("../../assets/bcmaps/78-EUC-V.bcmap")),
+        "78-H" => Some(include_bytes!("../../assets/bcmaps/78-H.bcmap")),
+        "78-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/78-RKSJ-H.bcmap")),
+        "78-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/78-RKSJ-V.bcmap")),
+        "78-V" => Some(include_bytes!("../../assets/bcmaps/78-V.bcmap")),
+        "78ms-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/78ms-RKSJ-H.bcmap")),
+        "78ms-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/78ms-RKSJ-V.bcmap")),
+        "83pv-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/83pv-RKSJ-H.bcmap")),
+        "90ms-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/90ms-RKSJ-H.bcmap")),
+        "90ms-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/90ms-RKSJ-V.bcmap")),
+        "90msp-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/90msp-RKSJ-H.bcmap")),
+        "90msp-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/90msp-RKSJ-V.bcmap")),
+        "90pv-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/90pv-RKSJ-H.bcmap")),
+        "90pv-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/90pv-RKSJ-V.bcmap")),
+        "Add-H" => Some(include_bytes!("../../assets/bcmaps/Add-H.bcmap")),
+        "Add-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/Add-RKSJ-H.bcmap")),
+        "Add-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/Add-RKSJ-V.bcmap")),
+        "Add-V" => Some(include_bytes!("../../assets/bcmaps/Add-V.bcmap")),
+
+        // Adobe CNS1 encodings
+        "Adobe-CNS1-0" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-0.bcmap")),
+        "Adobe-CNS1-1" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-1.bcmap")),
+        "Adobe-CNS1-2" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-2.bcmap")),
+        "Adobe-CNS1-3" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-3.bcmap")),
+        "Adobe-CNS1-4" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-4.bcmap")),
+        "Adobe-CNS1-5" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-5.bcmap")),
+        "Adobe-CNS1-6" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-6.bcmap")),
+        "Adobe-CNS1-UCS2" => Some(include_bytes!("../../assets/bcmaps/Adobe-CNS1-UCS2.bcmap")),
+
+        // Adobe GB1 encodings
+        "Adobe-GB1-0" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-0.bcmap")),
+        "Adobe-GB1-1" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-1.bcmap")),
+        "Adobe-GB1-2" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-2.bcmap")),
+        "Adobe-GB1-3" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-3.bcmap")),
+        "Adobe-GB1-4" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-4.bcmap")),
+        "Adobe-GB1-5" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-5.bcmap")),
+        "Adobe-GB1-UCS2" => Some(include_bytes!("../../assets/bcmaps/Adobe-GB1-UCS2.bcmap")),
+
+        // Adobe Japan1 encodings
+        "Adobe-Japan1-0" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-0.bcmap")),
+        "Adobe-Japan1-1" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-1.bcmap")),
+        "Adobe-Japan1-2" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-2.bcmap")),
+        "Adobe-Japan1-3" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-3.bcmap")),
+        "Adobe-Japan1-4" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-4.bcmap")),
+        "Adobe-Japan1-5" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-5.bcmap")),
+        "Adobe-Japan1-6" => Some(include_bytes!("../../assets/bcmaps/Adobe-Japan1-6.bcmap")),
+        "Adobe-Japan1-UCS2" => Some(include_bytes!(
+            "../../assets/bcmaps/Adobe-Japan1-UCS2.bcmap"
+        )),
+
+        // Adobe Korea1 encodings
+        "Adobe-Korea1-0" => Some(include_bytes!("../../assets/bcmaps/Adobe-Korea1-0.bcmap")),
+        "Adobe-Korea1-1" => Some(include_bytes!("../../assets/bcmaps/Adobe-Korea1-1.bcmap")),
+        "Adobe-Korea1-2" => Some(include_bytes!("../../assets/bcmaps/Adobe-Korea1-2.bcmap")),
+        "Adobe-Korea1-UCS2" => Some(include_bytes!(
+            "../../assets/bcmaps/Adobe-Korea1-UCS2.bcmap"
+        )),
+
+        // Big5 encodings
+        "B5-H" => Some(include_bytes!("../../assets/bcmaps/B5-H.bcmap")),
+        "B5-V" => Some(include_bytes!("../../assets/bcmaps/B5-V.bcmap")),
+        "B5pc-H" => Some(include_bytes!("../../assets/bcmaps/B5pc-H.bcmap")),
+        "B5pc-V" => Some(include_bytes!("../../assets/bcmaps/B5pc-V.bcmap")),
+
+        // CNS encodings
+        "CNS-EUC-H" => Some(include_bytes!("../../assets/bcmaps/CNS-EUC-H.bcmap")),
+        "CNS-EUC-V" => Some(include_bytes!("../../assets/bcmaps/CNS-EUC-V.bcmap")),
+        "CNS1-H" => Some(include_bytes!("../../assets/bcmaps/CNS1-H.bcmap")),
+        "CNS1-V" => Some(include_bytes!("../../assets/bcmaps/CNS1-V.bcmap")),
+        "CNS2-H" => Some(include_bytes!("../../assets/bcmaps/CNS2-H.bcmap")),
+        "CNS2-V" => Some(include_bytes!("../../assets/bcmaps/CNS2-V.bcmap")),
+
+        // ETen and ETHK encodings
+        "ETHK-B5-H" => Some(include_bytes!("../../assets/bcmaps/ETHK-B5-H.bcmap")),
+        "ETHK-B5-V" => Some(include_bytes!("../../assets/bcmaps/ETHK-B5-V.bcmap")),
+        "ETen-B5-H" => Some(include_bytes!("../../assets/bcmaps/ETen-B5-H.bcmap")),
+        "ETen-B5-V" => Some(include_bytes!("../../assets/bcmaps/ETen-B5-V.bcmap")),
+        "ETenms-B5-H" => Some(include_bytes!("../../assets/bcmaps/ETenms-B5-H.bcmap")),
+        "ETenms-B5-V" => Some(include_bytes!("../../assets/bcmaps/ETenms-B5-V.bcmap")),
+
+        // EUC and basic encodings
+        "EUC-H" => Some(include_bytes!("../../assets/bcmaps/EUC-H.bcmap")),
+        "EUC-V" => Some(include_bytes!("../../assets/bcmaps/EUC-V.bcmap")),
+        "Ext-H" => Some(include_bytes!("../../assets/bcmaps/Ext-H.bcmap")),
+        "Ext-RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/Ext-RKSJ-H.bcmap")),
+        "Ext-RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/Ext-RKSJ-V.bcmap")),
+        "Ext-V" => Some(include_bytes!("../../assets/bcmaps/Ext-V.bcmap")),
+
+        // GB encodings
+        "GB-EUC-H" => Some(include_bytes!("../../assets/bcmaps/GB-EUC-H.bcmap")),
+        "GB-EUC-V" => Some(include_bytes!("../../assets/bcmaps/GB-EUC-V.bcmap")),
+        "GB-H" => Some(include_bytes!("../../assets/bcmaps/GB-H.bcmap")),
+        "GB-V" => Some(include_bytes!("../../assets/bcmaps/GB-V.bcmap")),
+        "GBK-EUC-H" => Some(include_bytes!("../../assets/bcmaps/GBK-EUC-H.bcmap")),
+        "GBK-EUC-V" => Some(include_bytes!("../../assets/bcmaps/GBK-EUC-V.bcmap")),
+        "GBK2K-H" => Some(include_bytes!("../../assets/bcmaps/GBK2K-H.bcmap")),
+        "GBK2K-V" => Some(include_bytes!("../../assets/bcmaps/GBK2K-V.bcmap")),
+        "GBKp-EUC-H" => Some(include_bytes!("../../assets/bcmaps/GBKp-EUC-H.bcmap")),
+        "GBKp-EUC-V" => Some(include_bytes!("../../assets/bcmaps/GBKp-EUC-V.bcmap")),
+        "GBT-EUC-H" => Some(include_bytes!("../../assets/bcmaps/GBT-EUC-H.bcmap")),
+        "GBT-EUC-V" => Some(include_bytes!("../../assets/bcmaps/GBT-EUC-V.bcmap")),
+        "GBT-H" => Some(include_bytes!("../../assets/bcmaps/GBT-H.bcmap")),
+        "GBT-V" => Some(include_bytes!("../../assets/bcmaps/GBT-V.bcmap")),
+        "GBTpc-EUC-H" => Some(include_bytes!("../../assets/bcmaps/GBTpc-EUC-H.bcmap")),
+        "GBTpc-EUC-V" => Some(include_bytes!("../../assets/bcmaps/GBTpc-EUC-V.bcmap")),
+        "GBpc-EUC-H" => Some(include_bytes!("../../assets/bcmaps/GBpc-EUC-H.bcmap")),
+        "GBpc-EUC-V" => Some(include_bytes!("../../assets/bcmaps/GBpc-EUC-V.bcmap")),
+
+        // Basic direction encodings
+        "H" => Some(include_bytes!("../../assets/bcmaps/H.bcmap")),
+        "V" => Some(include_bytes!("../../assets/bcmaps/V.bcmap")),
+
+        // Hong Kong encodings
+        "HKdla-B5-H" => Some(include_bytes!("../../assets/bcmaps/HKdla-B5-H.bcmap")),
+        "HKdla-B5-V" => Some(include_bytes!("../../assets/bcmaps/HKdla-B5-V.bcmap")),
+        "HKdlb-B5-H" => Some(include_bytes!("../../assets/bcmaps/HKdlb-B5-H.bcmap")),
+        "HKdlb-B5-V" => Some(include_bytes!("../../assets/bcmaps/HKdlb-B5-V.bcmap")),
+        "HKgccs-B5-H" => Some(include_bytes!("../../assets/bcmaps/HKgccs-B5-H.bcmap")),
+        "HKgccs-B5-V" => Some(include_bytes!("../../assets/bcmaps/HKgccs-B5-V.bcmap")),
+        "HKm314-B5-H" => Some(include_bytes!("../../assets/bcmaps/HKm314-B5-H.bcmap")),
+        "HKm314-B5-V" => Some(include_bytes!("../../assets/bcmaps/HKm314-B5-V.bcmap")),
+        "HKm471-B5-H" => Some(include_bytes!("../../assets/bcmaps/HKm471-B5-H.bcmap")),
+        "HKm471-B5-V" => Some(include_bytes!("../../assets/bcmaps/HKm471-B5-V.bcmap")),
+        "HKscs-B5-H" => Some(include_bytes!("../../assets/bcmaps/HKscs-B5-H.bcmap")),
+        "HKscs-B5-V" => Some(include_bytes!("../../assets/bcmaps/HKscs-B5-V.bcmap")),
+
+        // Japanese character set encodings
+        "Hankaku" => Some(include_bytes!("../../assets/bcmaps/Hankaku.bcmap")),
+        "Hiragana" => Some(include_bytes!("../../assets/bcmaps/Hiragana.bcmap")),
+        "Katakana" => Some(include_bytes!("../../assets/bcmaps/Katakana.bcmap")),
+        "Roman" => Some(include_bytes!("../../assets/bcmaps/Roman.bcmap")),
+
+        // Korean encodings
+        "KSC-EUC-H" => Some(include_bytes!("../../assets/bcmaps/KSC-EUC-H.bcmap")),
+        "KSC-EUC-V" => Some(include_bytes!("../../assets/bcmaps/KSC-EUC-V.bcmap")),
+        "KSC-H" => Some(include_bytes!("../../assets/bcmaps/KSC-H.bcmap")),
+        "KSC-Johab-H" => Some(include_bytes!("../../assets/bcmaps/KSC-Johab-H.bcmap")),
+        "KSC-Johab-V" => Some(include_bytes!("../../assets/bcmaps/KSC-Johab-V.bcmap")),
+        "KSC-V" => Some(include_bytes!("../../assets/bcmaps/KSC-V.bcmap")),
+        "KSCms-UHC-H" => Some(include_bytes!("../../assets/bcmaps/KSCms-UHC-H.bcmap")),
+        "KSCms-UHC-HW-H" => Some(include_bytes!("../../assets/bcmaps/KSCms-UHC-HW-H.bcmap")),
+        "KSCms-UHC-HW-V" => Some(include_bytes!("../../assets/bcmaps/KSCms-UHC-HW-V.bcmap")),
+        "KSCms-UHC-V" => Some(include_bytes!("../../assets/bcmaps/KSCms-UHC-V.bcmap")),
+        "KSCpc-EUC-H" => Some(include_bytes!("../../assets/bcmaps/KSCpc-EUC-H.bcmap")),
+        "KSCpc-EUC-V" => Some(include_bytes!("../../assets/bcmaps/KSCpc-EUC-V.bcmap")),
+
+        // NWP encodings
+        "NWP-H" => Some(include_bytes!("../../assets/bcmaps/NWP-H.bcmap")),
+        "NWP-V" => Some(include_bytes!("../../assets/bcmaps/NWP-V.bcmap")),
+
+        // RKSJ encodings
+        "RKSJ-H" => Some(include_bytes!("../../assets/bcmaps/RKSJ-H.bcmap")),
+        "RKSJ-V" => Some(include_bytes!("../../assets/bcmaps/RKSJ-V.bcmap")),
+
+        // Unicode CNS encodings
+        "UniCNS-UCS2-H" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UCS2-H.bcmap")),
+        "UniCNS-UCS2-V" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UCS2-V.bcmap")),
+        "UniCNS-UTF16-H" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UTF16-H.bcmap")),
+        "UniCNS-UTF16-V" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UTF16-V.bcmap")),
+        "UniCNS-UTF32-H" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UTF32-H.bcmap")),
+        "UniCNS-UTF32-V" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UTF32-V.bcmap")),
+        "UniCNS-UTF8-H" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UTF8-H.bcmap")),
+        "UniCNS-UTF8-V" => Some(include_bytes!("../../assets/bcmaps/UniCNS-UTF8-V.bcmap")),
+
+        // Unicode GB encodings
+        "UniGB-UCS2-H" => Some(include_bytes!("../../assets/bcmaps/UniGB-UCS2-H.bcmap")),
+        "UniGB-UCS2-V" => Some(include_bytes!("../../assets/bcmaps/UniGB-UCS2-V.bcmap")),
+        "UniGB-UTF16-H" => Some(include_bytes!("../../assets/bcmaps/UniGB-UTF16-H.bcmap")),
+        "UniGB-UTF16-V" => Some(include_bytes!("../../assets/bcmaps/UniGB-UTF16-V.bcmap")),
+        "UniGB-UTF32-H" => Some(include_bytes!("../../assets/bcmaps/UniGB-UTF32-H.bcmap")),
+        "UniGB-UTF32-V" => Some(include_bytes!("../../assets/bcmaps/UniGB-UTF32-V.bcmap")),
+        "UniGB-UTF8-H" => Some(include_bytes!("../../assets/bcmaps/UniGB-UTF8-H.bcmap")),
+        "UniGB-UTF8-V" => Some(include_bytes!("../../assets/bcmaps/UniGB-UTF8-V.bcmap")),
+
+        // Unicode JIS encodings
+        "UniJIS-UCS2-H" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UCS2-H.bcmap")),
+        "UniJIS-UCS2-HW-H" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UCS2-HW-H.bcmap")),
+        "UniJIS-UCS2-HW-V" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UCS2-HW-V.bcmap")),
+        "UniJIS-UCS2-V" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UCS2-V.bcmap")),
+        "UniJIS-UTF16-H" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UTF16-H.bcmap")),
+        "UniJIS-UTF16-V" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UTF16-V.bcmap")),
+        "UniJIS-UTF32-H" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UTF32-H.bcmap")),
+        "UniJIS-UTF32-V" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UTF32-V.bcmap")),
+        "UniJIS-UTF8-H" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UTF8-H.bcmap")),
+        "UniJIS-UTF8-V" => Some(include_bytes!("../../assets/bcmaps/UniJIS-UTF8-V.bcmap")),
+        "UniJIS2004-UTF16-H" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJIS2004-UTF16-H.bcmap"
+        )),
+        "UniJIS2004-UTF16-V" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJIS2004-UTF16-V.bcmap"
+        )),
+        "UniJIS2004-UTF32-H" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJIS2004-UTF32-H.bcmap"
+        )),
+        "UniJIS2004-UTF32-V" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJIS2004-UTF32-V.bcmap"
+        )),
+        "UniJIS2004-UTF8-H" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJIS2004-UTF8-H.bcmap"
+        )),
+        "UniJIS2004-UTF8-V" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJIS2004-UTF8-V.bcmap"
+        )),
+        "UniJISPro-UCS2-HW-V" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJISPro-UCS2-HW-V.bcmap"
+        )),
+        "UniJISPro-UCS2-V" => Some(include_bytes!("../../assets/bcmaps/UniJISPro-UCS2-V.bcmap")),
+        "UniJISPro-UTF8-V" => Some(include_bytes!("../../assets/bcmaps/UniJISPro-UTF8-V.bcmap")),
+        "UniJISX0213-UTF32-H" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJISX0213-UTF32-H.bcmap"
+        )),
+        "UniJISX0213-UTF32-V" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJISX0213-UTF32-V.bcmap"
+        )),
+        "UniJISX02132004-UTF32-H" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJISX02132004-UTF32-H.bcmap"
+        )),
+        "UniJISX02132004-UTF32-V" => Some(include_bytes!(
+            "../../assets/bcmaps/UniJISX02132004-UTF32-V.bcmap"
+        )),
+
+        // Unicode Korean encodings
+        "UniKS-UCS2-H" => Some(include_bytes!("../../assets/bcmaps/UniKS-UCS2-H.bcmap")),
+        "UniKS-UCS2-V" => Some(include_bytes!("../../assets/bcmaps/UniKS-UCS2-V.bcmap")),
+        "UniKS-UTF16-H" => Some(include_bytes!("../../assets/bcmaps/UniKS-UTF16-H.bcmap")),
+        "UniKS-UTF16-V" => Some(include_bytes!("../../assets/bcmaps/UniKS-UTF16-V.bcmap")),
+        "UniKS-UTF32-H" => Some(include_bytes!("../../assets/bcmaps/UniKS-UTF32-H.bcmap")),
+        "UniKS-UTF32-V" => Some(include_bytes!("../../assets/bcmaps/UniKS-UTF32-V.bcmap")),
+        "UniKS-UTF8-H" => Some(include_bytes!("../../assets/bcmaps/UniKS-UTF8-H.bcmap")),
+        "UniKS-UTF8-V" => Some(include_bytes!("../../assets/bcmaps/UniKS-UTF8-V.bcmap")),
+
+        // Special symbol encoding
+        "WP-Symbol" => Some(include_bytes!("../../assets/bcmaps/WP-Symbol.bcmap")),
+
+        _ => None,
+    }
 }
 
 impl Default for InterpreterSettings {
@@ -89,6 +342,10 @@ impl Default for InterpreterSettings {
                 FontQuery::Standard(s) => Some(s.get_font_data()),
                 FontQuery::Fallback(f) => Some(f.pick_standard_font().get_font_data()),
             }),
+            #[cfg(not(feature = "cmaps"))]
+            cmap_resolver: Arc::new(|_| None),
+            #[cfg(feature = "cmaps")]
+            cmap_resolver: Arc::new(resolve_builtin_cmap),
             warning_sink: Arc::new(|_| {}),
         }
     }
